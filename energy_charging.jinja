@@ -1,0 +1,457 @@
+{%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720,
+                                        810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}
+
+{%- macro _find_price_sensors() -%}
+    {%- set price_sensors = states.sensor | selectattr('attributes.raw_today', 'defined') | selectattr('attributes.raw_tomorrow', 'defined') | map(attribute='entity_id') | list -%}
+    {%- set price_sensor = namespace(id=none, data_count=0) -%}
+    {%- for s in price_sensors if price_sensors | count > 1 -%}
+        {%- set count_today = state_attr(s, attr_today) | count -%}
+        {%- set count_tomorrow = state_attr(s, attr_tomorrow) | count -%}
+        {%- set count_total = count_today + count_tomorrow -%}
+        {%- if count_total > price_sensor.data_count -%}
+            {%- set price_sensor.data_count = count_total -%}
+            {%- set price_sensor.id = s -%}
+        {%- endif -%}
+        {%- else -%}
+            {%- set price_sensor.id = price_sensors | first if price_sensors else none -%}
+    {%- endfor -%}
+    {{- price_sensor.id -}}
+{%- endmacro-%}
+
+{%- macro _find_solcast_sensors(day='today') -%}
+  {%- if day == 'today' -%}
+    {%- set day=now().strftime("%A") -%}
+  {%- else -%} 
+    {%- set day= (now() + timedelta(days=1)).strftime("%A") -%}
+  {%- endif -%}
+  {%- set price_sensors = states.sensor | selectattr('attributes.detailedForecast', 'defined')| selectattr('attributes.dayname') | selectattr('attributes.dayname', 'eq', day) | map(attribute='entity_id') | list -%}
+  {%- set price_sensor = namespace(id=none) -%}
+  {%- for s in price_sensors -%}
+    {%- if state_attr(s, "dayname")==day -%}
+      {%- set price_sensor.id = s -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {{- price_sensor.id -}}
+{%- endmacro-%}
+
+{%- macro energy_charging(debug=false, getValue='recommandation', actualHour=now().hour, BatteriesSoC=0, PVTotal=0.0, addOnCosts=0.0, tax = 1.19, recalcPrices = false, recalcValuesMinCount=6, EQE = 30, PowerRequirement = PowerRequirementWithoutPV, SafetyMargin = 1.2, dissipation=0.125, capBatteries=13800, maxPowerLoad=10800, recursion=true, validityrange="") -%}
+{#  getValue =
+    recommandation
+    price
+    maxprice
+    minprice
+    loadinguntil 
+    usebatteriesuntil
+    getforecast
+    getforecastSoC
+    validityrange
+
+    EQE =
+    auto
+    static Value
+    off
+#}
+  {%- set debug_pre = debug -%}
+  {%- set BatteriesSoC = BatteriesSoC if BatteriesSoC is number else states(BatteriesSoC)|int(0) -%}
+  {%- set PVTotal = PVTotal if PVTotal is number else states(PVTotal)|int(0) -%}
+  {%- set addOnCosts = addOnCosts if addOnCosts is number else states(addOnCosts)|float(0) -%}
+
+  {%- set ElectricityDemandEqualization = EQE|lower != 'off' -%}
+  {%- set solCastToday = _find_solcast_sensors('today') -%}
+  {%- set solCastTomorrow = _find_solcast_sensors('tomorrow') -%}
+  
+  {%- if (not PowerRequirement is number) and PowerRequirement|length == 24 -%}
+    {%- set PowerRequirementWithoutPV = PowerRequirement -%}
+    {%- set nsPR = namespace( x=[]) -%}
+    {%- for item in PowerRequirementWithoutPV -%}
+      {%- set pp = PowerRequirementWithoutPV[loop.index0] -%}
+      {%- set nsPR.x = nsPR.x + [pp] -%}
+    {%- endfor -%}
+  {%- set PowerRequirementWithoutPV = nsPR.x -%}
+  {%- else -%}
+    PowerRequirement must be an array with 24 values!
+  {%- endif -%}
+        
+  {%- set pricePool = _find_price_sensors() -%}
+  
+  {%- set ns = namespace() -%}
+  {%- set ns.cheapHoursCount=0 -%}
+  {%- set ns.cheapHours=[] -%}
+  {%- set ns.energyPrices=[] -%}
+  {%- set ns.forecast=[] -%}
+  {%- set ns.forecastSoC=[] -%}
+  {%- set ns.fcSoCValue=0 -%}
+      
+  {%- set ns.BatteriesCapWatt = capBatteries*(BatteriesSoC|float) / 100 -%}
+  
+  {%- set output = state_attr(pricePool,'raw_today') -%}
+  {%- if state_attr(pricePool,'tomorrow_valid')==true -%}
+    {%- set output = output+(state_attr(pricePool,'raw_tomorrow')) -%}
+  {%- endif -%}
+
+  
+  {%- set oPrice = namespace(value=[]) -%}
+  {%- for item in output -%}
+      {%- set oPrice.value = oPrice.value + [item.value] -%}
+  {%- endfor -%}
+  {%- set devider = "───────┼──────┼─────────┼───────┼───────┼───────┼───────┼────────┼────────┼─────────┼───────┼─────────┼────────┼────────" -%}
+  {%- set formatHeader = "%6s │ %-4s │ %7s │ %5s │ %5s │ %-5s │ %-5s │ %6s │ %6s │ %7s │ %-5s │ %7s │ %6s │ %6s " -%}
+  {%- set formatRow =    "%6s │ %-4s │ %.05f │ %5s │ %5s │ %-5s │ %-5s │ %6s │ %6s │ %7s │ %-5s │ %7s │ %6s │ %6s " -%}
+  {%- if debug -%}
+{{ formatHeader|format("Status", "Zeit", "Preis", "üMin%","uMax%", "uBat", "chBat", "Bedarf", "solC", "calcB", "NetzB", "EDE", "SoC", "LF") }}
+{{ devider }}
+  {%- endif -%}
+  
+  {%- set maxPrice = ((oPrice.value|max) * tax) + addOnCosts | float -%}
+  {%- set minPrice = ((oPrice.value|min) * tax) + addOnCosts | float -%}
+  {%- set useBatteriesUntil = (minPrice*(2*dissipation)) | round(4) -%}
+  {%- set loadingUntil      = (minPrice*(dissipation)) | round(4) -%}
+  {%- set ns.helperChargeBatteries = 0 -%}
+  
+  {%- set ns.addValues = true -%}
+  {%- set ns.addValuesHelper = true -%}
+  {%- for item in output -%}
+    {%- set calc = "" -%}
+    {%- set hour = as_local((item.start)).strftime("%H")|int -%}
+    {%- if (loop.index>actualHour) -%}
+      {%- set price = ((item.value*tax) + addOnCosts)|round(4) -%}
+      {%- set useBatteries = (price > minPrice+useBatteriesUntil) -%}
+      {%- set chargeBatteries = (price <= minPrice+loadingUntil) -%}
+      {%- if chargeBatteries != ns.addValuesHelper -%}
+        {%- set ns.helperChargeBatteries = ns.helperChargeBatteries + 1 -%}
+        {%- set calc = calc+"<>" -%}
+      {%- endif -%}
+      {#- TEST -#}
+      {%- if chargeBatteries and not useBatteries and ns.helperChargeBatteries > 1 -%}
+        {%- set ns.helperChargeBatteries = 0 -%}
+        {%- set calc = calc+"S-" -%}
+      {%- endif -%}      
+      {%- if ns.helperChargeBatteries > 1 -%}
+        {%- set ns.addValues = false -%}
+        {%- set calc = calc+"S" -%}
+      {%- endif -%}
+      {%- if ns.addValues -%}
+        {%- set ns.energyPrices = ns.energyPrices+[{
+            "start": item.start,
+            "end": item.end,
+            "value": item.value,
+            "today": loop.index<24,
+            }] -%}
+        {%- set calc = calc+"A" -%}  
+      {%- endif -%}
+      {%- set PowerSupply = (useBatteries==chargeBatteries) -%}
+      {%- if (loop.index<24) -%}
+        {%- set solCast = state_attr(solCastToday, 'detailedHourly')[hour]['pv_estimate'] -%}
+      {%- else -%}
+        {%- set solCast = state_attr(solCastTomorrow, 'detailedHourly')[hour]['pv_estimate'] -%}
+      {%- endif -%}
+      {%- set solCast = (solCast*1000)|round(0) -%}
+      {%- set PowerRequirement = (PowerRequirementWithoutPV[hour]*SafetyMargin*(1+dissipation))-solCast -%}
+      {%- set EDEValue = (PowerSupply*PowerRequirement)|round(0) -%}
+      {%- if (EDEValue<0) -%}
+        {%- set EDEValue = 0 -%}
+      {%- endif -%}
+      
+      {%- set NotEDEValueAdd = (not ElectricityDemandEqualization)*EDEValue -%}
+      {%- set EDEValueAdd =  (ElectricityDemandEqualization*(PowerSupply+EDEValue)) -%}
+      {%- set EDEValueComb = - NotEDEValueAdd + EDEValueAdd -%}
+      {#%- set ns.BatteriesCapWatt = ns.BatteriesCapWatt - PowerRequirement - (not ElectricityDemandEqualization*EDEValue) + (ElectricityDemandEqualization*(PowerSupply+EDEValue)) -%#}
+      {%- if ns.BatteriesCapWatt<=0 -%}
+        {%- set EDEValueComb = 0 -%}
+      {%- endif -%}
+      {%- set ns.BatteriesCapWatt = ns.BatteriesCapWatt - PowerRequirement + EDEValueComb -%}
+      {%- if (ns.BatteriesCapWatt<0) -%}
+        {%- set ns.BatteriesCapWatt = 0 -%}
+      {%- endif -%}
+      {%- set ns.forecast = ns.forecast+[{
+          "datetime": as_local((item.start)).strftime("%Y-%m-%d %H:%M:%S"),
+          "hour": as_local((item.start)).strftime("%H")|int,
+          "price":price|round(4),
+          "priceUeMin":(price/minPrice*100)|round(1) - 100,
+          "priceUMax":(price/maxPrice*100)|round(1) - 100,
+          "useBatteries":useBatteries,
+          "chargeBatteries":chargeBatteries,
+          "PowerRequirementWithoutPV":PowerRequirementWithoutPV[hour],
+          "CapPowerRequirement":(ns.BatteriesCapWatt)|round(0),
+          "PowerSupply":PowerSupply,
+          "PowerRequirement":PowerRequirement,
+          "solCast":solCast,
+          "EDEValue":EDEValue,
+          }]
+      -%}
+{%- if debug_pre %}
+{{ formatRow|format(
+    calc,
+    as_local((item.start)).strftime("%H"),
+    price, 
+    ((price/minPrice*100)-100)|round(1), 
+    ((price/maxPrice*100)-100)|round(1), 
+    useBatteries, 
+    chargeBatteries, 
+    PowerRequirementWithoutPV[hour]|round(0), 
+    solCast, 
+    PowerRequirement|round(0), 
+    PowerSupply, 
+    EDEValue|round(0),
+    (ns.BatteriesCapWatt)|round(0),
+    "")
+    }}
+  {%- endif -%}  
+      {%- set ns.addValuesHelper = chargeBatteries -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- if debug_pre %}
+{{ devider }}
+{{ formatHeader|format("Status", "Zeit", "Preis", "üMin%","uMax%", "uBat", "chBat", "Bedarf", "solC", "calcB", "NetzB", "EDE", "SoC", "LF") }}
+{{ devider }}
+  {%- endif -%}
+  
+  {%- if recalcPrices and ns.energyPrices|count >= recalcValuesMinCount -%}
+    {%- set oPrice = namespace(value=[]) -%}
+    {%- for item in ns.energyPrices -%}
+        {%- set oPrice.value = oPrice.value + [item.value] -%}
+    {%- endfor -%}
+    {%- set dissipation = dissipation/1 -%}
+  {%- endif -%}
+  
+  {%- set maxPrice = ((oPrice.value|max) * tax) + addOnCosts | float -%}
+  {%- set minPrice = ((oPrice.value|min) * tax) + addOnCosts | float -%}
+  {%- set loadingUntil = (minPrice*(2*dissipation)) | round(4) -%}
+  {%- set useBatteriesUntil = (minPrice*(dissipation)) | round(4) -%}
+  {%- set ns.BatteriesCapWatt = capBatteries*(BatteriesSoC|float) / 100 -%}
+  
+  {% set ns.addSoC = 0 -%}
+  {%- for item in ns.energyPrices -%}
+      {%- set hour = as_local((item.start)).strftime("%H")|int -%}
+      {%- set price = (item.value*tax)+addOnCosts|round(4) -%}
+      {%- set useBatteries = (price > minPrice+useBatteriesUntil) -%}
+      {%- set chargeBatteries = (price <= minPrice+loadingUntil) -%}
+      {%- if (useBatteries and chargeBatteries) -%}
+        {%- set useBatteries = false -%}
+        {%- set chargeBatteries = false -%}        
+      {%- endif -%}
+      {%- set PowerSupply = (useBatteries==chargeBatteries) -%}
+      {%- set ns.cheapHoursCount = ns.cheapHoursCount+1 -%}
+      {%- if (item.today) -%}
+        {%- set solCast = state_attr(solCastToday, 'detailedHourly')[hour]['pv_estimate'] -%}
+      {%- else -%}
+        {%- set solCast = state_attr(solCastTomorrow, 'detailedHourly')[hour]['pv_estimate'] -%}
+      {%- endif -%}
+      {%- set solCast = (solCast*1000)|round(0) -%}
+      {%- set PowerRequirement = (PowerRequirementWithoutPV[hour]*SafetyMargin*(1+dissipation))-solCast -%}
+      {%- set EDEValue = (PowerSupply*PowerRequirement)|round(0) -%}
+      {%- if (EDEValue<0) -%}
+        {%- set EDEValue = 0 -%}
+      {%- endif -%}
+
+      {%- set NotEDEValueAdd = (not ElectricityDemandEqualization)*EDEValue -%}
+      {%- set EDEValueAdd =  (ElectricityDemandEqualization*(PowerSupply+EDEValue)) -%}
+      {%- set EDEValueComb = - NotEDEValueAdd + EDEValueAdd -%}
+      {#%- set ns.BatteriesCapWatt = ns.BatteriesCapWatt - PowerRequirement - (not ElectricityDemandEqualization*EDEValue) + (ElectricityDemandEqualization*(PowerSupply+EDEValue)) -%#}
+      {%- if (ns.BatteriesCapWatt<=0) -%}
+        {%- set EDEValueComb = 0 -%}
+      {%- endif -%}
+      {%- set ns.BatteriesCapWatt = ns.BatteriesCapWatt - PowerRequirement + EDEValueComb -%}
+      {%- if (ns.BatteriesCapWatt<0) -%}
+        {%- set ns.BatteriesCapWatt = 0 -%}
+      {%- endif -%}
+      {%- set state = useBatteries*2 + chargeBatteries*1 -%}
+      {%- if (chargeBatteries == chargeBatteries) -%}
+        {%- set ns.cheapHours = ns.cheapHours+[{
+            "datetime": as_local((item.start)).strftime("%Y-%m-%d %H:%M:%S"),
+            "hour": as_local((item.start)).strftime("%H")|int,
+            "price":price|round(4),
+            "priceUeMin":(price/minPrice*100)|round(1) - 100,
+            "priceUMax":(price/maxPrice*100)|round(1) - 100,
+            "useBatteries":useBatteries,
+            "chargeBatteries":chargeBatteries,
+            "state": state,
+            "PowerRequirementWithoutPV":PowerRequirementWithoutPV[hour],
+            "CapPowerRequirement":(ns.BatteriesCapWatt)|round(0),
+            "PowerSupply":PowerSupply,
+            "PowerRequirement":PowerRequirement,
+            "solCast":solCast,
+            "EDEValue":EDEValue,
+            }]
+        -%}
+      {%- endif -%}
+  {%- endfor -%}
+
+  {%- set maxPercent = 100 -%}
+  {%- set minPercent = 0 -%}
+  {%- if ns.cheapHours|selectattr('chargeBatteries')|list|count>0 -%}
+    {%- set maxPercent = ns.cheapHours|selectattr('chargeBatteries')|map(attribute='priceUeMin')|max | float -%}
+    {%- set minPercent = ns.cheapHours|selectattr('chargeBatteries')|map(attribute='priceUeMin')|min | float -%}
+  {%- endif -%}
+  
+  {%- set diffHalfPercent = (maxPercent - minPercent)/2 -%}
+  {%- set ns.helperChargeBatteries = 0 -%}
+  {%- set ns.helperWattSum = 0 -%}
+  {%- set ns.allowCharge = false -%}
+  {%- set ns.hourCounter = 0 -%}
+  {%- set ns.LF = 0 -%}
+  {%- for item in ns.cheapHours -%}
+    {%- set calc = "" -%}
+    {%- set LF = ((100-1*(item.priceUeMin - diffHalfPercent))/100)|round(4)*item.chargeBatteries -%}
+    {%- if loop.index0==0 -%}
+      {%- set ns.LF = LF -%}
+    {%- endif -%}
+    {%- if (ns.cheapHours[0].chargeBatteries
+            or (ns.cheapHours[0].PowerSupply and ElectricityDemandEqualization))
+      -%}
+        {%- if item.PowerRequirement > 0 -%}
+          {%- set calc = calc+"+" -%}
+          {%- set ns.helperWattSum = ns.helperWattSum + ((item.PowerRequirement*(item.useBatteries|int))) -%}
+        {%- endif -%}
+  
+      {%- if not item.chargeBatteries -%}
+        {%- set ns.helperChargeBatteries = ns.helperChargeBatteries + 1 -%}
+        {%- set calc = calc+"*" -%}
+      {%- endif -%}
+      
+      {%- if item.chargeBatteries -%}
+        {%- set ns.hourCounter = ns.hourCounter+1 -%}
+        {%- set calc = calc+"L" -%}
+      {%- endif -%}
+    {% endif -%}
+  {%- if debug %}
+{{ formatRow|format(calc, 
+item.hour, 
+item.price|round(4), 
+item.priceUeMin|round(1), 
+item.priceUMax|round(1), 
+item.useBatteries, 
+item.chargeBatteries, 
+item.PowerRequirementWithoutPV|round(0), 
+item.solCast, 
+item.PowerRequirement|round(0), 
+item.PowerSupply, 
+item.EDEValue|round(0), 
+item.CapPowerRequirement,
+LF) }}
+  {%- endif -%}
+  {%- endfor -%}
+  {%- set chargePower = 0 -%}
+  {%- if ((ns.helperWattSum)|round(0)>((capBatteries*(BatteriesSoC|float))/100)|round(0)) and (BatteriesSoC<100)-%}
+    {% set chargePower = (ns.helperWattSum)|round(0)-(capBatteries*(BatteriesSoC|float)/100)*SafetyMargin*(1+dissipation) -%}
+  {%- endif -%}
+
+  {%- set ns.hourCounter = 1 if ns.hourCounter == 0 else ns.hourCounter -%}
+  {%- if (chargePower/ns.hourCounter) < 100 -%}
+    {% set chargePower = 0 -%}
+  {%- endif -%}
+  {% set maxChargePower = chargePower -%}
+  {%- if (chargePower/ns.hourCounter) > maxPowerLoad -%}
+    {% set chargePower = maxPowerLoad -%}
+  {%- endif -%}
+  {%- set useBatterieHoursCount = ns.cheapHours|selectattr('useBatteries')|list|count -%}
+  {%- set EQEallowed = ns.cheapHours|map(attribute='state')|unique|list -%}
+  {%- if (EQEallowed|count>1) and (EQEallowed[0]==0) and (EQEallowed[1]==1) -%}
+    {%- set EQEallowed = false -%}
+  {%- else -%}
+      {%- set EQEallowed = true -%}
+  {%- endif -%}
+  {%- set chargePowerHour = ((chargePower/ns.hourCounter)*ns.LF)|int(default=0) -%}
+  
+  {#%- if (PVTotal>chargePowerHour) -%}
+    {% set chargePowerHour = 0 -%}
+  {%- endif -%#}
+
+  {%- if (ns.cheapHours[0].PowerSupply) and (BatteriesSoC>0) and (useBatterieHoursCount>0) and (EQEallowed==true)-%}
+    {%- if EQE|lower == 'auto' -%}
+      {%- set chargePowerHour = (ns.cheapHours[0].EDEValue*SafetyMargin)|round(0) -%}
+    {%- elif EQE is number -%}
+      {%- set chargePowerHour = EQE|int -%}
+    {%- endif -%}  
+    {%- set ns.LF = 1 -%}    
+  {%- endif -%}  
+  {%- if (PVTotal>ns.cheapHours[0].PowerRequirement) -%}
+    {#% set chargePowerHour = 0 -%#}
+  {%- endif -%}
+  
+{#- Forecase SoC-#}
+{%- if recursion == true and getValue|lower=='getforecastsoc' -%}
+  {%- set ns.fcSoCValue = 0 -%}
+  {#%- if actualHour>=24 -%}{%- set actualHour=actualHour-24 -%}{%- endif -%#}
+  {%- for item in ns.forecast -%}
+    {#%- if (loop.index>=actualHour) -%#}
+      {%- set v = energy_charging(getValue='recommandation', 
+                      BatteriesSoC=ns.fcSoCValue, 
+                      PVTotal=item.solCast, 
+                      addOnCosts = addOnCosts,     
+                      actualHour=ns.forecast[0].hour|int + loop.index0, 
+                      recalcPrices = recalcPrices, 
+                      recalcValuesMinCount=recalcValuesMinCount, 
+                      EQE = EQE, 
+                      PowerRequirement = PowerRequirement,
+                      SafetyMargin = SafetyMargin, 
+                      dissipation = dissipation, 
+                      capBatteries=capBatteries, 
+                      maxPowerLoad=maxPowerLoad,
+                      recursion=false)|int -%}
+      {%- set ns.fcSoCValue = (ns.fcSoCValue+((v|trim|int)*100/capBatteries)) -%}
+      {%- if (ns.fcSoCValue<0) -%}
+        {%- set ns.fcSoCValue = 0 -%} 
+      {%- endif -%}
+      {%- set ns.forecastSoC = ns.forecastSoC+[{
+        "hour": ns.forecast[0].hour|int + loop.index0,
+        "forecastPower": v|trim|float|round(2),
+        "forecastSoC": ns.fcSoCValue|round(2),
+      }] -%}
+    {#%- endif -%#}
+    {%- endfor -%}
+    {% if debug %}
+      {{ ns.forecastSoC|pprint }}
+    {%- endif -%}
+{%- endif -%}
+
+{# validity range#}
+{%- if (actualHour|int>=24) -%}
+  {%- set actualHourTimestamp = today_at((actualHour-24)|string+":00")+timedelta( days = 1) -%}
+{%- else -%}
+  {%- set actualHourTimestamp = today_at(actualHour|string+":00") -%}
+{%- endif -%}
+{%- set timeUpToCharge = actualHourTimestamp+timedelta( hours = ns.cheapHours|count - 1) -%}
+{%- set ns.validityRange = {
+  "actualHourTimestamp":actualHourTimestamp,
+  "timeUpToCharge": timeUpToCharge,
+  "loadingUntil": minPrice+loadingUntil|round(4),
+  "usebatteriesuntil": minPrice+useBatteriesUntil|round(4),
+} -%}
+  {% if debug %}
+  
+    SoC:                   {{ (capBatteries*(BatteriesSoC|float) / 100)|round(0)}} W ({{ BatteriesSoC }}%)
+    PV Total:              {{ PVTotal }} W
+    Strombedarf:           {{ (maxChargePower)|round(0) }} W / {{ ns.hourCounter}} h ({{ ((maxChargePower/ns.hourCounter))|int(default=0) }} W/h)
+    Aktueller Preis:       {{ ns.cheapHours[0].price|round(4) }} Euro
+    Laden zwischen:        {{ minPrice|round(4) }} - {{ (minPrice+useBatteriesUntil)|round(4) }} Euro
+    Batterie nicht nutzen: {{ (minPrice+useBatteriesUntil)|round(4) }} - {{ (minPrice+loadingUntil)|round(4) }} Euro
+    Batterie nutzen:       {{ (minPrice+loadingUntil)|round(4) }} - {{ maxPrice|round(4) }} Euro
+    Laden mit:             {{ (chargePowerHour)|int(default=0) }} W/h {{ (((chargePower)/capBatteries*100)/ns.hourCounter)|float(default=0)|round(1) }} %
+
+    Gültig von:            {{ ns.validityRange.actualHourTimestamp}}
+    Gültig bis:            {{ ns.validityRange.timeUpToCharge}}
+{%- else -%}
+  {%- if getValue|lower=='recommandation' -%}  
+{{- chargePowerHour|trim|int -}}
+  {%- elif getValue|lower=='price' -%}  
+{{- ns.cheapHours[0].price|round(4) -}}
+  {%- elif getValue|lower=='maxprice' -%}  
+{{- maxPrice|round(4) -}}
+  {%- elif getValue|lower=='minprice' -%}  
+{{- minPrice|round(4) -}}
+  {%- elif getValue|lower=='loadinguntil' -%}  
+{{- minPrice+loadingUntil|round(4) -}}
+  {%- elif getValue|lower=='usebatteriesuntil' -%}  
+{{- minPrice+useBatteriesUntil|round(4) -}}
+  {%- elif getValue|lower=='getcheapestforecast' -%}  
+{{- ns.cheapHours -}}
+  {%- elif getValue|lower=='getforecast' -%}  
+{{- ns.forecast -}}
+  {%- elif getValue|lower=='getforecastsoc' -%}  
+{{- ns.forecastSoC -}}
+  {%- elif getValue|lower=='validityrange' -%}  
+{{- ns.validityRange -}}
+{%- endif -%}
+  {%- endif -%}
+{%- endmacro -%}
