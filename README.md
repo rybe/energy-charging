@@ -9,6 +9,7 @@ There are many parameters:
 4. efficiency of the inverter+battery
 
 ![ApexChart](https://github.com/rybe/energy-charging/blob/main/docu/apexcharts.png)
+![Debug view](https://github.com/rybe/energy-charging/blob/main/docu/debug.png)
 
 ## How to install
 
