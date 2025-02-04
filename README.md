@@ -8,6 +8,8 @@ There are many parameters:
 3. electricity price/hour
 4. efficiency of the inverter+battery
 
+![ApexChart](https://github.com/rybe/energy-charging/blob/main/docu/apexcharts.png)
+
 ## How to install
 
 You need to have Home Assistant 2023.11 or higher installed to use this custom template.
