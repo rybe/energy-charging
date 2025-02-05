@@ -366,7 +366,7 @@ LF) }}
     {%- set ns.LF = 1 -%}    
   {%- endif -%}  
   {%- if (PVTotal>ns.cheapHours[0].PowerRequirement) -%}
-    {#% set chargePowerHour = 0 -%#}
+    {% set chargePowerHour = 0 -%}
   {%- endif -%}
   
 {#- Forecase SoC-#}
