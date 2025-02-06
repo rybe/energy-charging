@@ -365,7 +365,7 @@ LF) }}
     {%- endif -%}  
     {%- set ns.LF = 1 -%}    
   {%- endif -%}  
-  {%- if (PVTotal>ns.cheapHours[0].PowerRequirement) -%}
+  {%- if (PVTotal>ns.cheapHours[0].PowerRequirement+chargePowerHour) -%}
     {% set chargePowerHour = 0 -%}
   {%- endif -%}
   
