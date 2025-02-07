@@ -9,7 +9,57 @@ There are many parameters:
 4. efficiency of the inverter+battery
 
 ![ApexChart](https://github.com/rybe/energy-charging/blob/main/docu/apexcharts.png)
-![Debug view](https://github.com/rybe/energy-charging/blob/main/docu/debug.png)
+
+Debug output:
+
+    Status │ Zeit │   Preis │ üMin% │ uMax% │ uBat  │ chBat │ Bedarf │   solC │   calcB │ NetzB │     EDE │    SoC │     LF 
+    ───────┼──────┼─────────┼───────┼───────┼───────┼───────┼────────┼────────┼─────────┼───────┼─────────┼────────┼────────
+       <>A │ 09   │ 0.37450 │  19.3 │  -4.3 │ False │ False │    610 │    680 │     144 │ True  │     144 │      0 │        
+         A │ 10   │ 0.35550 │  13.3 │  -9.1 │ False │ False │    680 │    568 │     350 │ True  │     350 │      0 │        
+     <>S-A │ 11   │ 0.33290 │   6.1 │ -14.9 │ False │ True  │    720 │    268 │     704 │ False │       0 │      0 │        
+         A │ 12   │ 0.32810 │   4.5 │ -16.1 │ False │ True  │    810 │    298 │     796 │ False │       0 │      0 │        
+         A │ 13   │ 0.32340 │   3.0 │ -17.3 │ False │ True  │    830 │    715 │     406 │ False │       0 │      0 │        
+         A │ 14   │ 0.32690 │   4.2 │ -16.4 │ False │ True  │    860 │   1177 │     -16 │ False │       0 │     16 │        
+         A │ 15   │ 0.32930 │   4.9 │ -15.8 │ False │ True  │    840 │    672 │     462 │ False │       0 │      0 │        
+         A │ 16   │ 0.34720 │  10.6 │ -11.2 │ False │ True  │    890 │    140 │    1062 │ False │       0 │      0 │        
+       <>A │ 17   │ 0.36620 │  16.7 │  -6.4 │ False │ False │    830 │      0 │    1120 │ True  │    1120 │      0 │        
+         A │ 18   │ 0.37340 │  19.0 │  -4.6 │ False │ False │   1000 │      0 │    1350 │ True  │    1350 │      0 │        
+         A │ 19   │ 0.36740 │  17.1 │  -6.1 │ False │ False │   1140 │      0 │    1539 │ True  │    1539 │      0 │        
+     <>S-A │ 20   │ 0.34720 │  10.6 │ -11.2 │ False │ True  │   1000 │      0 │    1350 │ False │       0 │      0 │        
+         A │ 21   │ 0.31500 │   0.4 │ -19.5 │ False │ True  │   1000 │      0 │    1350 │ False │       0 │      0 │        
+         A │ 22   │ 0.31390 │   0.0 │ -19.8 │ False │ True  │    730 │      0 │     986 │ False │       0 │      0 │        
+         A │ 23   │ 0.31500 │   0.4 │ -19.5 │ False │ True  │    670 │      0 │     904 │ False │       0 │      0 │        
+    ───────┼──────┼─────────┼───────┼───────┼───────┼───────┼────────┼────────┼─────────┼───────┼─────────┼────────┼────────
+    Status │ Zeit │   Preis │ üMin% │ uMax% │ uBat  │ chBat │ Bedarf │   solC │   calcB │ NetzB │     EDE │    SoC │     LF 
+    ───────┼──────┼─────────┼───────┼───────┼───────┼───────┼────────┼────────┼─────────┼───────┼─────────┼────────┼────────
+        +* │ 9    │ 0.37450 │  19.3 │  -4.3 │ False │ False │    610 │    680 │     144 │ True  │     144 │      0 │    0.0 
+        +* │ 10   │ 0.35550 │  13.3 │  -9.1 │ False │ False │    680 │    568 │     350 │ True  │     350 │      0 │    0.0 
+        +L │ 11   │ 0.33280 │   6.1 │ -14.9 │ False │ True  │    720 │    268 │     704 │ False │       0 │      0 │  0.992 
+        +L │ 12   │ 0.32810 │   4.5 │ -16.1 │ False │ True  │    810 │    298 │     796 │ False │       0 │      0 │  1.008 
+        +L │ 13   │ 0.32330 │   3.0 │ -17.3 │ False │ True  │    830 │    715 │     406 │ False │       0 │      0 │  1.023 
+         L │ 14   │ 0.32690 │   4.2 │ -16.4 │ False │ True  │    860 │   1177 │     -16 │ False │       0 │     16 │  1.011 
+        +L │ 15   │ 0.32930 │   4.9 │ -15.8 │ False │ True  │    840 │    672 │     462 │ False │       0 │      0 │  1.004 
+        +L │ 16   │ 0.34710 │  10.6 │ -11.3 │ False │ True  │    890 │    140 │    1062 │ False │       0 │      0 │  0.947 
+        +* │ 17   │ 0.36620 │  16.7 │  -6.4 │ False │ False │    830 │      0 │    1120 │ True  │    1120 │      0 │    0.0 
+        +* │ 18   │ 0.37330 │  18.9 │  -4.6 │ False │ False │   1000 │      0 │    1350 │ True  │    1350 │      0 │    0.0 
+        +* │ 19   │ 0.36740 │  17.0 │  -6.1 │ False │ False │   1140 │      0 │    1539 │ True  │    1539 │      0 │    0.0 
+        +L │ 20   │ 0.34710 │  10.6 │ -11.3 │ False │ True  │   1000 │      0 │    1350 │ False │       0 │      0 │  0.947 
+        +L │ 21   │ 0.31500 │   0.4 │ -19.5 │ False │ True  │   1000 │      0 │    1350 │ False │       0 │      0 │  1.049 
+        +L │ 22   │ 0.31380 │   0.0 │ -19.8 │ False │ True  │    730 │      0 │     986 │ False │       0 │      0 │  1.053 
+        +L │ 23   │ 0.31500 │   0.4 │ -19.5 │ False │ True  │    670 │      0 │     904 │ False │       0 │      0 │  1.049 
+      
+        SoC:                   0 W (0%)
+        PV Total:              0 W
+        Strombedarf:           0 W / 10 h (0 W/h)
+        Aktueller Preis:       0.3745 Euro
+        Laden zwischen:        0.3139 - 0.3531 Euro
+        Batterie nicht nutzen: 0.3531 - 0.3924 Euro
+        Batterie nutzen:       0.3924 - 0.3912 Euro
+        Laden mit:             0 W/h 0.0 %
+    
+        Gültig von:            2025-02-07 09:00:00+01:00
+        Gültig bis:            2025-02-07 23:00:00+01:00
+        
 
 ## How to install
 
