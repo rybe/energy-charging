@@ -43,37 +43,35 @@ The necessary sensors for the exchange price and solar forecast are selected aut
 
 ## Parameters
 
-|Parameter|Value|Explanation|
-|--|--|--|
-| debug | true \| false* | Displays a table of all values |
-| getValue | recommandation* | Displays the recommended charge value in watts (W)
-||price | shows the current electricity price
-||maxprice|shows the maximum electricity price
-||minprice|shows the minimum electricity price
-||loadinguntil|shows the charge limit in euros
-||usebatteriesuntil|indicates when the battery should be used
-||getforecast|shows the future load values based on the current values
-||getforecastSoC|shows the future charge values based on the current values (SoC)
-||validityrange|specifies the validity range
-|actualHour|0-23 (now().hour*)|specifies the hour for which the values are to be calculated
-|BatteriesSoC|Numerical value (0*) or string| Current SoC of the battery. E.g.: 'sensor.sunny_tripower_10_0_se_battery_soc_total' or 10 (for 10%)
-|PVTotal|Numerical value (0*) or string|Current power of the PV system in W (float) or name of the sensor ('sensor.pv_power_total')
-|addOnCosts|Numerical value (0*) or string|Additional electricity costs (€) or name of the sensor ('input_number.stromzusatzkosten')
-|tax|Numerical value (1.19*)|Value added tax
-|recalcPrices| true \| false* | Calculates the charging limits from the current hour (otherwise the entire 24 hours are taken into account)
-|recalcValuesMinCount|Numerical value (6*) | If recalcPrices = true valid. At least n entries must be pending
-|EQE|auto, static Value (30*), off|If the current electricity price is so high that charging is not allowed, but the price is too low to discharge the battery, then this value is returned.
-||auto|a calculated value is returned, useful if you need to specify an “exact” value
-||static value|useful if this prevents the battery from discharging 
-||off|no value is returned, so no distinction can be made as to whether the battery may be discharged or not
-|PowerRequirement|array with 24 values|This array contains the normal consumption per hour. The standard values can be transferred as an array (see example) or stored directly in the jinja2 file.
-|||Beispiel: `{%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720, 810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}`
-|SafetyMargin|Numerical value (1.2*)|The percentage safety margin
-|dissipation|Numerical value (0.125*)|The percentage dissipation
-|capBatteries|Numerical value (13800)|Total battery capacity in watts
-|maxPowerLoad|Numerical value (10800)|Total battery charging power in watts
-
-\* default
+|Parameter|Type|**Default**/Options|Explanation|
+|--|--|--|--|--|
+| debug | boolean | false | Displays a table of all values ||
+| getValue | string |**recommandation** | Displays the recommended charge value in watts (W)|
+|||price | shows the current electricity price
+|||maxprice|shows the maximum electricity price
+|||minprice|shows the minimum electricity price
+|||loadinguntil|shows the charge limit in euros
+|||usebatteriesuntil|indicates when the battery should be used
+|||getforecast|shows the future load values based on the current values
+|||getforecastSoC|shows the future charge values based on the current values (SoC)
+|||validityrange|specifies the validity range
+|actualHour|number|now().hour|specifies the hour for which the values are to be calculated
+|BatteriesSoC|number or string|0| Current SoC of the battery. E.g.: 'sensor.sunny_tripower_10_0_se_battery_soc_total' or 10 (for 10%)
+|PVTotal|number or string|0|Current power of the PV system in W (float) or name of the sensor ('sensor.pv_power_total')
+|addOnCosts|number or string|0|Additional electricity costs (€) or name of the sensor ('input_number.stromzusatzkosten')
+|tax|number| 1.19|Value added tax
+|recalcPrices| boolean| false | Calculates the charging limits from the current hour (otherwise the entire 24 hours are taken into account)
+|recalcValuesMinCount|number|6| If recalcPrices = true valid. At least n entries must be pending
+|EQE|string or number|**30**|If the current electricity price is so high that charging is not allowed, but the price is too low to discharge the battery, then this value is returned.
+|||auto|a calculated value is returned, useful if you need to specify an “exact” value
+|||static value|useful if this prevents the battery from discharging 
+|||off|no value is returned, so no distinction can be made as to whether the battery may be discharged or not
+|PowerRequirement|array||This array contains the normal consumption per hour. The standard values can be transferred as an array (see example) or stored directly in the jinja2 file.
+||||Beispiel: `{%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720, 810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}`
+|SafetyMargin|number|1.2|The percentage safety margin
+|dissipation|number|0.125|The percentage dissipation
+|capBatteries|number|13800|Total battery capacity in watts
+|maxPowerLoad|number|10800|Total battery charging power in watts
 
 
 ## Template Sensors
