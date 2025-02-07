@@ -8,6 +8,7 @@ There are many parameters:
 3. electricity price/hour
 4. efficiency of the inverter+battery
 
+ApexChart (see below):
 ![ApexChart](https://github.com/rybe/energy-charging/blob/main/docu/apexcharts.png)
 
 Debug output:
