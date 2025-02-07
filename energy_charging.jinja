@@ -1,5 +1,25 @@
 {%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720,
                                         810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}
+{# octops energy preise #}
+{%- set nsPrice = namespace(energy = []) -%}
+{%- set prices = [ 0.1746, 0.1746, 0.1746, 0.1746, 0.1746, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068, 0.3068 ] -%}
+{%- set prices = [ 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605, 0.2605 ] -%}
+{%- for p in prices -%}
+    {%- set nsPrice.energy = nsPrice.energy+[{
+    "start": today_at(loop.index0|string+":00"),
+    "end": today_at(loop.index0|string+":00")+timedelta( hours = 1),
+    "value": p,
+    "today": true,
+    }] -%}
+{%- endfor -%}
+{%- for p in prices -%}
+    {%- set nsPrice.energy = nsPrice.energy+[{
+    "start": today_at(loop.index0|string+":00")+timedelta(days = 1),
+    "end": today_at(loop.index0|string+":00")+timedelta(days = 1, hours = 1),
+    "value": p,
+    "today": false,
+    }] -%}
+{%- endfor -%}
 
 {%- macro _find_price_sensors() -%}
     {%- set price_sensors = states.sensor | selectattr('attributes.raw_today', 'defined') | selectattr('attributes.raw_tomorrow', 'defined') | map(attribute='entity_id') | list -%}
@@ -55,6 +75,7 @@
   {%- set BatteriesSoC = BatteriesSoC if BatteriesSoC is number else states(BatteriesSoC)|int(0) -%}
   {%- set PVTotal = PVTotal if PVTotal is number else states(PVTotal)|int(0) -%}
   {%- set addOnCosts = addOnCosts if addOnCosts is number else states(addOnCosts)|float(0) -%}
+  {%- set recalcPrices = true if recalcPrices == 'on' or recalcPrices==true else false -%}
 
   {%- set ElectricityDemandEqualization = EQE|lower != 'off' -%}
   {%- set solCastToday = _find_solcast_sensors('today') -%}
@@ -88,11 +109,17 @@
   {%- if state_attr(pricePool,'tomorrow_valid')==true -%}
     {%- set output = output+(state_attr(pricePool,'raw_tomorrow')) -%}
   {%- endif -%}
+  {# octopus energy #}
+  {#%- set output = nsPrice.energy -%}
+  {%- set addOnCosts = 0 -%}
+  {%- set tax = 1 -%#}
 
   
   {%- set oPrice = namespace(value=[]) -%}
   {%- for item in output -%}
+    {#%- if (loop.index0>=actualHour) -%#}
       {%- set oPrice.value = oPrice.value + [item.value] -%}
+    {#%- endif -%#}
   {%- endfor -%}
   {%- set devider = "───────┼──────┼─────────┼───────┼───────┼───────┼───────┼────────┼────────┼─────────┼───────┼─────────┼────────┼────────" -%}
   {%- set formatHeader = "%6s │ %-4s │ %7s │ %5s │ %5s │ %-5s │ %-5s │ %6s │ %6s │ %7s │ %-5s │ %7s │ %6s │ %6s " -%}
@@ -122,7 +149,7 @@
         {%- set calc = calc+"<>" -%}
       {%- endif -%}
       {#- TEST -#}
-      {%- if chargeBatteries and not useBatteries and ns.helperChargeBatteries > 1 -%}
+      {%- if not recalcPrices and chargeBatteries and not useBatteries and ns.helperChargeBatteries > 1 -%}
         {%- set ns.helperChargeBatteries = 0 -%}
         {%- set calc = calc+"S-" -%}
       {%- endif -%}      
