@@ -43,7 +43,7 @@ The necessary sensors for the exchange price and solar forecast are selected aut
 
 ## Parameters
 
-|Parameter|Type|**Default**/Options|Explanation|
+|Parameter|Type|Default/Options|Explanation|
 |--|--|--|--|--|
 | debug | boolean | false | Displays a table of all values ||
 | getValue | string |**recommandation** | Displays the recommended charge value in watts (W)|
