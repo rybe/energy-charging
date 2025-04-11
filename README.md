@@ -118,7 +118,7 @@ The necessary sensors for the exchange price and solar forecast are selected aut
 |||static value|useful if this prevents the battery from discharging 
 |||off|no value is returned, so no distinction can be made as to whether the battery may be discharged or not
 |PowerRequirement|array||This array contains the normal consumption per hour. The standard values can be transferred as an array (see example) or stored directly in the jinja2 file.
-||||Beispiel: `{%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720, 810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}`
+||||Example: `{%- set PowerRequirementWithoutPV =  [  630,  630,  610,  660,  620,  620,  700,  770,  830,  610,  680,  720, 810,  830,  860,  840,  890,  830, 1000, 1140, 1000, 1000,  730,  670] -%}`
 |SafetyMargin|number|1.2|The percentage safety margin
 |dissipation|number|0.125|The percentage dissipation
 |capBatteries|number|13800|Total battery capacity in watts
